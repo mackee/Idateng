@@ -59,4 +59,14 @@ sub all {
     return wantarray ? @rows : [@rows];
 }
 
+sub first {
+    my $self = shift;
+
+    return Idateng::Row->new(
+        column_names => $self->idateng->tables->{$self->table},
+        row => $self->rows->[0],
+        idateng => $self->idateng
+    );
+}
+
 1;

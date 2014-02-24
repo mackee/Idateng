@@ -16,7 +16,7 @@ cover_db/
 *.bak
 *.old
 *~
-*.swp
+*.sw[po]
 *.o
 *.obj
 
@@ -25,3 +25,5 @@ cover_db/
 MYMETA.*
 
 /Idateng-*
+
+test.db

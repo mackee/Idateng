@@ -23,6 +23,11 @@ has opt => (
     default => sub { +{} },
 );
 
+has set => (
+    is => 'rw',
+    default => sub { +{} },
+);
+
 has phrase => (
     is => 'rw',
     default => sub { return; },
@@ -54,6 +59,7 @@ sub query {
         $self->_merge('where', $where),
         $self->_merge('opt', $opt),
         idateng => $self->idateng,
+        set => $self->set,
         %args,
     );
 }
@@ -61,20 +67,37 @@ sub query {
 sub search {
     my $self = shift;
 
+    croak 'duplicate statement phrase' if $self->phrase;
+
     return $self->query(
         $self->table, $self->where, $self->opt,
-        phrase => 'search'
+        phrase => 'search',
+    );
+}
+
+sub update {
+    my ($self, $set) = @_;
+
+    croak 'duplicate statement phrase' if $self->phrase;
+
+    return $self->query(
+        $self->table, $self->where, $self->opt,
+        phrase => 'update',
+        set => $self->_merge('set', $set),
     );
 }
 
 sub do {
     my ($self, $cb) = @_;
+    my $cv = AnyEvent->condvar;
 
     if ($self->phrase eq 'search') {
         my ($stmt, @binds) =
             $self->idateng->sql_builder->select(
                 $self->table, $self->build_colmuns, $self->where, $self->opt
             );
+        $self->phrase('');
+
         $self->idateng->dbh->exec($stmt, @binds, sub {
             my ($dbh, $rows, $rv) = @_;
             my $idateng_rows = Idateng::Rows->new(
@@ -82,12 +105,36 @@ sub do {
                 table => $self->table,
                 rows => $rows,
             );
-            $cb->($self, $idateng_rows, $rv);
+            $cv->send($cb->($self, $idateng_rows, $rv));
+        });
+    }
+    elsif ($self->phrase eq 'update') {
+        my ($stmt, @binds) =
+            $self->idateng->sql_builder->update(
+                $self->table, $self->set, $self->where
+            );
+        $self->phrase('');
+
+        $self->idateng->dbh->exec($stmt, @binds, sub {
+            my ($dbh, $rows, $rv) = @_;
+            if (!$cb) {
+                $cv->send($self);
+            }
+            else {
+                my $idateng_rows = Idateng::Rows->new(
+                    idateng => $self->idateng,
+                    table => $self->table,
+                    rows => $rows,
+                );
+                $cv->send($cb->($self, $idateng_rows, $rv));
+            }
         });
     }
     else {
         croak 'sql phrase is empty';
     }
+
+    $cv->recv;
 }
 
 sub build_colmuns {

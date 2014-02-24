@@ -6,6 +6,7 @@ use 5.18.2;
 use lib 'lib';
 use Idateng;
 use DBI;
+use AnyEvent;
 
 my $dbh = DBI->connect('dbi:SQLite:dbname=test.db', '', '');
 $dbh->do('DROP TABLE IF EXISTS t1');
@@ -24,6 +25,8 @@ my $idateng = Idateng->new(
     connect_info => ['dbi:SQLite:dbname=test.db', '', '']
 );
 
+my $cv = AnyEvent->condvar;
+
 $idateng->query('t1', {
     id => 1
 })->search->do(sub {
@@ -33,7 +36,13 @@ $idateng->query('t1', {
             warn $column.' -> '.$row->$column; 
         }
     }
-    $idateng->cv->broadcast;
+    return $query;
+})->update({
+    name => 'barbar'
+})->do->search->do(sub {
+    my ($query, $rows, $rv) = @_;
+    $cv->send($rows->first->name);
 });
 
-$idateng->cv->wait;
+my $result = $cv->recv;
+warn $result; # barbar
